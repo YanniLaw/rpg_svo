@@ -104,6 +104,14 @@ void KltHomographyInit::reset()
   frame_ref_.reset();
 }
 
+/**
+ * @brief 检测特征点
+ * 
+ *
+ * @param frame 帧指针
+ * @param px_vec 特征点坐标向量
+ * @param f_vec 特征点方向向量
+ */
 void detectFeatures(
     FramePtr frame,
     vector<cv::Point2f>& px_vec,

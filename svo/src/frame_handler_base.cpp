@@ -84,11 +84,18 @@ FrameHandlerBase::~FrameHandlerBase()
 #endif
 }
 
+/**
+ * @brief 前置检查与清理
+ * 
+ * @param timestamp 
+ * @return true 
+ * @return false 
+ */
 bool FrameHandlerBase::startFrameProcessingCommon(const double timestamp)
 {
-  if(set_start_)
+  if(set_start_) // 构造节点时调用了 vo_->start()
   {
-    resetAll();
+    resetAll(); // 这里会把set_start_ 重置为false
     stage_ = STAGE_FIRST_FRAME;
   }
 
@@ -98,13 +105,21 @@ bool FrameHandlerBase::startFrameProcessingCommon(const double timestamp)
   SVO_LOG(timestamp);
   SVO_DEBUG_STREAM("New Frame");
   SVO_START_TIMER("tot_time");
-  timer_.start();
+  timer_.start(); // 启动计时器
 
   // some cleanup from last iteration, can't do before because of visualization
-  map_.emptyTrash();
+  map_.emptyTrash(); // 释放上一轮被标记删除的 3D 点内存
   return true;
 }
 
+/**
+ * @brief 完成帧处理后的公共操作
+ * 
+ * @param update_id 当前帧的更新ID
+ * @param dropout 更新结果
+ * @param num_observations 当前帧的观测特征数量
+ * @return int 返回0
+ */
 int FrameHandlerBase::finishFrameProcessingCommon(
     const size_t update_id,
     const UpdateResult dropout,

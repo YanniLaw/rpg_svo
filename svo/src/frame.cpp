@@ -29,6 +29,8 @@ namespace svo {
 
 int Frame::frame_counter_ = 0;
 
+// 表示某一时刻相机拍到的一帧图像及其视觉里程计数据
+// 它是 SVO 里连接图像、特征、地图点和相机位姿的核心数据对象
 Frame::Frame(vk::AbstractCamera* cam, const cv::Mat& img, double timestamp) :
     id_(frame_counter_++),
     timestamp_(timestamp),
@@ -52,6 +54,12 @@ void Frame::initFrame(const cv::Mat& img)
     throw std::runtime_error("Frame: provided image has not the same size as the camera model or image is not grayscale");
 
   // Set keypoints to NULL
+  // key_pts_ 它是为关键帧服务的"视野重叠采样点"(普通帧的 key_pts_ 基本是空的)
+  // 存的不是"所有特征"，而是从这帧中挑出的 5 个代表特征，要求这些特征都关联了 3D 地图点
+  // 这 5 个位置分别是：靠近图像中心的 1 个，加上图像四个区域内各 1 个
+  // 用途是快速判断两帧视野是否重叠：Map::getCloseKeyframes 只需检查这 5 个点对应的 3D 点能否被当前帧看到，只要命中一个就认为重叠，避免遍历全部特征
+  // 只有帧被选为关键帧时，setKeyframe() 才调用 setKeyPoints() 填充
+  // 若某个候选特征对应的地图点被删除，removeKeyPoint 会清空该槽并重新挑选
   std::for_each(key_pts_.begin(), key_pts_.end(), [&](Feature* ftr){ ftr=NULL; });
 
   // Build Image Pyramid
@@ -159,6 +167,7 @@ void createImgPyramid(const cv::Mat& img_level_0, int n_levels, ImgPyr& pyr)
   pyr[0] = img_level_0;
   for(int i=1; i<n_levels; ++i)
   {
+    // 从第 1 层起，每层的宽和高都缩小为上一层的一半
     pyr[i] = cv::Mat(pyr[i-1].rows/2, pyr[i-1].cols/2, CV_8U);
     vk::halfSample(pyr[i-1], pyr[i]);
   }

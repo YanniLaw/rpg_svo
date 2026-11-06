@@ -29,6 +29,8 @@ class Feature;
 class Seed;
 
 /// Container for converged 3D points that are not already assigned to two keyframes.
+// 一个候选 3D 点的暂存和管理器
+// 它管理的是已经由深度滤波器估计出来、但还没正式并入帧中的点；这些点与 Map 中已稳定使用的地图点有所区别
 class MapPointCandidates
 {
 public:

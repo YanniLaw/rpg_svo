@@ -43,11 +43,11 @@ class FrameHandlerBase : boost::noncopyable
 {
 public:
   enum Stage {
-    STAGE_PAUSED,
-    STAGE_FIRST_FRAME,
-    STAGE_SECOND_FRAME,
-    STAGE_DEFAULT_FRAME,
-    STAGE_RELOCALIZING
+    STAGE_PAUSED,         // 暂停阶段
+    STAGE_FIRST_FRAME,    // 第一帧处理阶段
+    STAGE_SECOND_FRAME,   // 第二帧处理阶段
+    STAGE_DEFAULT_FRAME,  // 正常跟踪阶段
+    STAGE_RELOCALIZING    // 重定位阶段
   };
   enum TrackingQuality {
     TRACKING_INSUFFICIENT,
