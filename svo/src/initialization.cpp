@@ -30,6 +30,7 @@ InitResult KltHomographyInit::addFirstFrame(FramePtr frame_ref)
 {
   reset();
   detectFeatures(frame_ref, px_ref_, f_ref_);
+  // 检测出来的特征点太少
   if(px_ref_.size() < 100)
   {
     SVO_WARN_STREAM_THROTTLE(2.0, "First image has less than 100 features. Retry in more textured environment.");
@@ -117,7 +118,7 @@ void detectFeatures(
     vector<cv::Point2f>& px_vec,
     vector<Vector3d>& f_vec)
 {
-  Features new_features;
+  Features new_features; // 检测到的特征点集合
   feature_detection::FastDetector detector(
       frame->img().cols, frame->img().rows, Config::gridSize(), Config::nPyrLevels());
   detector.detect(frame.get(), frame->img_pyr_, Config::triangMinCornerScore(), new_features);
@@ -126,8 +127,8 @@ void detectFeatures(
   px_vec.clear(); px_vec.reserve(new_features.size());
   f_vec.clear(); f_vec.reserve(new_features.size());
   std::for_each(new_features.begin(), new_features.end(), [&](Feature* ftr){
-    px_vec.push_back(cv::Point2f(ftr->px[0], ftr->px[1]));
-    f_vec.push_back(ftr->f);
+    px_vec.push_back(cv::Point2f(ftr->px[0], ftr->px[1])); // 第0层的像素坐标
+    f_vec.push_back(ftr->f); // 单位方向向量
     delete ftr;
   });
 }

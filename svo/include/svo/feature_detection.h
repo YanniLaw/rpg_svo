@@ -28,7 +28,7 @@ namespace feature_detection {
 /// Temporary container used for corner detection. Features are initialized from these.
 struct Corner
 {
-  int x;        //!< x-coordinate of corner in the image.
+  int x;        //!< x-coordinate of corner in the image.图像原始坐标系下的 x 坐标
   int y;        //!< y-coordinate of corner in the image.
   int level;    //!< pyramid level of the corner.
   float score;  //!< shi-tomasi score of the corner.
