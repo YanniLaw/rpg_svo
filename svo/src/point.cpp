@@ -57,6 +57,7 @@ Point::Point(const Vector3d& pos, Feature* ftr) :
 Point::~Point()
 {}
 
+// 添加一个特征到该点，表示该点在某帧上有一个观测
 void Point::addFrameRef(Feature* ftr)
 {
   obs_.push_front(ftr);

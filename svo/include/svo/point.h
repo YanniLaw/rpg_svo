@@ -32,6 +32,7 @@ class Feature;
 typedef Matrix<double, 2, 3> Matrix23d;
 
 /// A 3D point on the surface of the scene.
+// 表示场景中的一个三维地图点
 class Point : boost::noncopyable
 {
 public:

@@ -173,16 +173,24 @@ void createImgPyramid(const cv::Mat& img_level_0, int n_levels, ImgPyr& pyr)
   }
 }
 
+/**
+ * 从一帧中统计该帧可见场景的深度统计量（中位深度、最小深度）
+ * @param frame 当前帧
+ * @param depth_mean 场景中位深度
+ * @param depth_min 场景最小深度
+ * @return 是否成功获取深度信息
+ */
 bool getSceneDepth(const Frame& frame, double& depth_mean, double& depth_min)
 {
   vector<double> depth_vec;
   depth_vec.reserve(frame.fts_.size());
   depth_min = std::numeric_limits<double>::max();
+  // fts_是在 addFeature 函数中添加的
   for(auto it=frame.fts_.begin(), ite=frame.fts_.end(); it!=ite; ++it)
   {
-    if((*it)->point != NULL)
+    if((*it)->point != NULL) // 存在对应的三维地图点
     {
-      const double z = frame.w2f((*it)->point->pos_).z();
+      const double z = frame.w2f((*it)->point->pos_).z(); // 世界系-> 相机系
       depth_vec.push_back(z);
       depth_min = fmin(z, depth_min);
     }

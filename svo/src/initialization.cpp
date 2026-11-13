@@ -41,51 +41,57 @@ InitResult KltHomographyInit::addFirstFrame(FramePtr frame_ref)
   return SUCCESS;
 }
 
+// 从第二帧估计相对位姿、归一化尺度、三角化出初始地图点
 InitResult KltHomographyInit::addSecondFrame(FramePtr frame_cur)
 {
   trackKlt(frame_ref_, frame_cur, px_ref_, px_cur_, f_ref_, f_cur_, disparities_);
   SVO_INFO_STREAM("Init: KLT tracked "<< disparities_.size() <<" features");
-
+  // 跟踪质量检查
+  // 1. 跟踪上的点太少 → 直接失败
   if(disparities_.size() < Config::initMinTracked())
     return FAILURE;
-
+  // 2. 中位视差太小 → 说明两帧间平移不足，三角化精度差，但不算错误，等后面的帧再试
   double disparity = vk::getMedian(disparities_);
   SVO_INFO_STREAM("Init: KLT "<<disparity<<"px average disparity.");
   if(disparity < Config::initMinDisparity())
     return NO_KEYFRAME;
-
+  // 单应矩阵 RANSAC 估计位姿
+  // inliers 的下标对应 f_ref/f_cur（也就是 px_ref_/px_cur_）中的位置
   computeHomography(
       f_ref_, f_cur_,
       frame_ref_->cam_->errorMultiplier2(), Config::poseOptimThresh(),
       inliers_, xyz_in_cur_, T_cur_from_ref_);
   SVO_INFO_STREAM("Init: Homography RANSAC "<<inliers_.size()<<" inliers.");
-
+  // 如果内点太少，说明单应估计失败，直接返回失败
   if(inliers_.size() < Config::initMinInliers())
   {
     SVO_WARN_STREAM("Init WARNING: "<<Config::initMinInliers()<<" inliers minimum required.");
     return FAILURE;
   }
-
+  // 尺度归一化： 单目无法恢复绝对尺度，因此把场景中位深度强制设为配置值
   // Rescale the map such that the mean scene depth is equal to the specified scale
   vector<double> depth_vec;
   for(size_t i=0; i<xyz_in_cur_.size(); ++i)
     depth_vec.push_back((xyz_in_cur_[i]).z());
-  double scene_depth_median = vk::getMedian(depth_vec);
-  double scale = Config::mapScale()/scene_depth_median;
+  double scene_depth_median = vk::getMedian(depth_vec); // 场景中位深度
+  double scale = Config::mapScale()/scene_depth_median; // 尺度因子，使得场景中位深度等于配置值
   frame_cur->T_f_w_ = T_cur_from_ref_ * frame_ref_->T_f_w_;
   frame_cur->T_f_w_.translation() =
       -frame_cur->T_f_w_.rotation_matrix()*(frame_ref_->pos() + scale*(frame_cur->pos() - frame_ref_->pos()));
-
+  // 创建初始地图点
   // For each inlier create 3D point and add feature in both frames
   SE3 T_world_cur = frame_cur->T_f_w_.inverse();
   for(vector<int>::iterator it=inliers_.begin(); it!=inliers_.end(); ++it)
   {
     Vector2d px_cur(px_cur_[*it].x, px_cur_[*it].y);
     Vector2d px_ref(px_ref_[*it].x, px_ref_[*it].y);
+    // 需要满足如下条件:
+    // 1. 当前帧和参考帧的特征点至少在图像边界内10像素(避免边缘处的patch越界)
+    // 2. 当前帧坐标系下的深度为正
     if(frame_ref_->cam_->isInFrame(px_cur.cast<int>(), 10) && frame_ref_->cam_->isInFrame(px_ref.cast<int>(), 10) && xyz_in_cur_[*it].z() > 0)
     {
       Vector3d pos = T_world_cur * (xyz_in_cur_[*it]*scale);
-      Point* new_point = new Point(pos);
+      Point* new_point = new Point(pos); // 世界坐标系下的 3D 点
 
       Feature* ftr_cur(new Feature(frame_cur.get(), new_point, px_cur, f_cur_[*it], 0));
       frame_cur->addFeature(ftr_cur);
@@ -133,6 +139,17 @@ void detectFeatures(
   });
 }
 
+/**
+ * @brief 用金字塔 Lucas-Kanade 光流，把第一帧的参考角点跟踪到当前帧，并就地剔除跟踪失败的点
+ * 
+ * @param frame_ref 参考帧指针
+ * @param frame_cur 当前帧指针
+ * @param px_ref 参考帧特征点像素坐标
+ * @param px_cur 当前帧特征点像素坐标
+ * @param f_ref 参考帧特征点单位方向向量，其实就是特征点的归一化坐标向量
+ * @param f_cur 当前帧特征点单位方向向量，其实就是特征点的归一化坐标向量
+ * @param disparities 特征点像素位移(视差)
+ */
 void trackKlt(
     FramePtr frame_ref,
     FramePtr frame_cur,
@@ -149,6 +166,7 @@ void trackKlt(
   vector<float> error;
   vector<float> min_eig_vec;
   cv::TermCriteria termcrit(cv::TermCriteria::COUNT+cv::TermCriteria::EPS, klt_max_iter, klt_eps);
+  // 在金字塔第 0 层图像上运行光流跟踪
   cv::calcOpticalFlowPyrLK(frame_ref->img_pyr_[0], frame_cur->img_pyr_[0],
                            px_ref, px_cur,
                            status, error,
@@ -162,6 +180,7 @@ void trackKlt(
   disparities.clear(); disparities.reserve(px_cur.size());
   for(size_t i=0; px_ref_it != px_ref.end(); ++i)
   {
+    // 同步过滤，删除跟踪失败的特征点
     if(!status[i])
     {
       px_ref_it = px_ref.erase(px_ref_it);
@@ -177,6 +196,17 @@ void trackKlt(
   }
 }
 
+/**
+ * @brief 计算单应矩阵，并据此估计当前帧相对于参考帧的位姿
+ *  
+ * @param f_ref 参考帧特征点单位方向向量(归一化坐标)
+ * @param f_cur 当前帧特征点单位方向向量(归一化坐标)
+ * @param focal_length 相机焦距，即像素单位焦距（sqrt(fx*fy)），用来把归一化坐标下的阈值换算到像素尺度
+ * @param reprojection_threshold 重投影误差阈值
+ * @param inliers 内点索引
+ * @param xyz_in_cur 当前帧坐标系下的三维点
+ * @param T_cur_from_ref 当前帧相对于参考帧的位姿
+ */
 void computeHomography(
     const vector<Vector3d>& f_ref,
     const vector<Vector3d>& f_cur,
@@ -190,12 +220,17 @@ void computeHomography(
   vector<Vector2d > uv_cur(f_cur.size());
   for(size_t i=0, i_max=f_ref.size(); i<i_max; ++i)
   {
-    uv_ref[i] = vk::project2d(f_ref[i]);
-    uv_cur[i] = vk::project2d(f_cur[i]);
+    uv_ref[i] = vk::project2d(f_ref[i]);  // (x/z, y/z)
+    uv_cur[i] = vk::project2d(f_cur[i]);  // (x/z, y/z)
   }
+  // 构造函数里做 RANSAC 单应估计，computeSE3fromMatches() 由单应分解出相机运动，
+  // 结果在 Homography.T_c2_from_c1（c2 = 当前帧，c1 = 参考帧）
   vk::Homography Homography(uv_ref, uv_cur, focal_length, reprojection_threshold);
   Homography.computeSE3fromMatches();
   vector<int> outliers;
+  // 几何内点检验 + 三角化
+  // 用上一步的 R, t 对每对特征做三角化，得到当前帧坐标系下的 3D 点 xyz_in_cur；
+  // 再检查重投影误差是否小于阈值，输出内点/外点索引
   vk::computeInliers(f_cur, f_ref,
                      Homography.T_c2_from_c1.rotation_matrix(), Homography.T_c2_from_c1.translation(),
                      reprojection_threshold, focal_length,

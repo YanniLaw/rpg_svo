@@ -22,6 +22,8 @@
 namespace svo {
 
 /// A salient image region that is tracked across frames.
+// 表示"某个像素位置上的一个可跟踪的图像特征"，是某帧上的一个观测
+// 它本身不拥有任何资源，只是把"在哪个帧、什么位置、对应哪个 3D 点"捆在一起
 struct Feature
 {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
